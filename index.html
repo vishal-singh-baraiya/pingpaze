@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PingPaze: Secure Messenger</title>
+    <title>Pingo: Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -467,7 +467,25 @@
             }
 
             // --- WebRTC Logic (Generic) & P2P ---
-            function createPeerConnectionBase() { return new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }); }
+            function createPeerConnectionBase() { 
+                const iceServers = [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    // Using a free, public TURN server for demonstration.
+                    // For a production app, you should deploy your own TURN server (e.g., Coturn).
+                    {
+                        urls: "turn:global.turn.twilio.com:3478?transport=udp",
+                        username: "7b79f82662c382e8d3567a423528ce33a0058b8f2d65d4484050a491a134e195",
+                        credential: "iO8g3/fT+efrC3w2I/9j+i8pA3dAk5bE3/4+u2fL7/I="
+                    },
+                    {
+                        urls: "turn:global.turn.twilio.com:3478?transport=tcp",
+                        username: "7b79f82662c382e8d3567a423528ce33a0058b8f2d65d4484050a491a134e195",
+                        credential: "iO8g3/fT+efrC3w2I/9j+i8pA3dAk5bE3/4+u2fL7/I="
+                    }
+                ];
+                return new RTCPeerConnection({ iceServers }); 
+            }
             function setupP2PDataChannel() { dataChannel.onopen = () => updateStatus('connected'); dataChannel.onclose = () => updateStatus('disconnected'); dataChannel.onmessage = async (e) => { const msg = await decrypt(e.data, sharedSecretKey); if (msg) displayMessage(msg, 'Peer'); }; }
 
             // --- Group Mode Logic ---
@@ -663,4 +681,5 @@
     </script>
 </body>
 </html>
+
 
