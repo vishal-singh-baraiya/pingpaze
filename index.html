@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ping Paze: Secure Messenger</title>
+    <title>Ping Paze</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -257,6 +257,7 @@
                 chatList.forEach(item => {
                     const itemDiv = document.createElement('div');
                     itemDiv.className = `flex items-center justify-between p-3 rounded-lg hover:bg-slate-100 cursor-pointer`;
+                    itemDiv.dataset.id = item.id; // Correctly add the data-id attribute
                     const itemInfo = document.createElement('div');
                     itemInfo.className = 'flex items-center overflow-hidden';
                     const icon = item.type === 'contact'
@@ -378,10 +379,11 @@
                 const contactId = await saveDBItem('contacts', { name, status: 'pending' });
                 pendingConnections.set(contactId, pc);
                 
-                await renderChatList();
                 newChatModal.classList.add('hidden');
+                await renderChatList();
                 
-                document.querySelector(`#chatList div[data-id='${contactId}']`)?.click();
+                const newContactEl = document.querySelector(`#chatList div[data-id='${contactId}']`);
+                if (newContactEl) newContactEl.click();
             }
 
             async function acceptP2PInvite() {
@@ -401,6 +403,7 @@
                 const { offer, publicKey: peerPublicKey } = invitePayload;
 
                 await saveDBItem('contacts', { name, publicKey: JSON.stringify(peerPublicKey) });
+                await renderChatList();
 
                 const pc = createPeerConnectionBase();
                 sharedSecretKey = await deriveSharedSecret(peerPublicKey);
@@ -423,14 +426,15 @@
                 const responseCode = btoa(JSON.stringify(responsePayload));
 
                 newChatModal.classList.add('hidden');
+                
+                chatTitle.textContent = `Chat with ${name}`;
+                chatBox.innerHTML = '';
                 connectionPanel.innerHTML = `<div class="p-4 space-y-4 bg-slate-100 rounded-lg">
                     <h4 class="font-medium text-sm text-gray-700">Response Code Generated!</h4>
                     <p class="text-xs text-gray-500 mb-2">Copy this code and send it back to the person who invited you.</p>
                     <textarea id="p2p_responseCodeArea" rows="4" class="w-full text-xs p-2 border rounded-md" readonly>${responseCode}</textarea>
                     <button onclick="navigator.clipboard.writeText(document.getElementById('p2p_responseCodeArea').value); showToast('Response Code Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Response Code</button>
                 </div>`;
-                
-                await renderChatList();
             }
             
             function startP2PChat(contact) {
@@ -438,12 +442,29 @@
                 chatTitle.textContent = `Chat with ${contact.name}`;
 
                 if (contact.status === 'pending') {
-                    connectionPanel.innerHTML = `<div class="p-4 space-y-4 bg-slate-100 rounded-lg">
-                        <h4 class="font-medium text-sm text-gray-700">Waiting for Response</h4>
-                        <p class="text-xs text-gray-500 mb-2">Once ${contact.name} sends their response code back, paste it here to connect.</p>
-                        <textarea id="p2p_responsePasteArea" rows="4" class="w-full text-xs p-2 border rounded-md" placeholder="Paste response code here..."></textarea>
-                        <button id="p2p_finalizeBtn" class="w-full mt-2 bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-md text-sm">Finalize Connection</button>
-                    </div>`;
+                    const pc = pendingConnections.get(contact.id);
+                    if (!pc) {
+                        connectionPanel.innerHTML = `<p class="p-4 text-red-500">Error: Could not find the pending connection details. Please try creating a new invite.</p>`;
+                        return;
+                    }
+                    const myPublicJwk = JSON.parse(myPublicKeyText.value);
+                    const invitePayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                    const inviteCode = btoa(JSON.stringify(invitePayload));
+
+                    connectionPanel.innerHTML = `
+                        <div class="p-4 space-y-4 bg-slate-100 rounded-lg">
+                            <h4 class="font-medium text-sm text-gray-700">Step 1: Send Your Invite Code</h4>
+                            <p class="text-xs text-gray-500 mb-2">Copy this code and send it to ${contact.name}.</p>
+                            <textarea id="p2p_inviteCodeArea" rows="4" class="w-full text-xs p-2 border rounded-md" readonly>${inviteCode}</textarea>
+                            <button onclick="navigator.clipboard.writeText(document.getElementById('p2p_inviteCodeArea').value); showToast('Invite Code Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Invite Code</button>
+                        </div>
+                        <div class="p-4 space-y-4 bg-slate-100 rounded-lg mt-4">
+                            <h4 class="font-medium text-sm text-gray-700">Step 2: Paste Their Response</h4>
+                            <p class="text-xs text-gray-500 mb-2">Once they respond, paste their code here.</p>
+                            <textarea id="p2p_responsePasteArea" rows="4" class="w-full text-xs p-2 border rounded-md" placeholder="Paste response code here..."></textarea>
+                            <button id="p2p_finalizeBtn" class="w-full mt-2 bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-md text-sm">Finalize Connection</button>
+                        </div>
+                    `;
 
                     document.getElementById('p2p_finalizeBtn').onclick = async () => {
                         const responseCode = document.getElementById('p2p_responsePasteArea').value.trim();
@@ -470,12 +491,10 @@
                         await renderChatList();
                     };
                 } else {
-                    // This is for reconnecting to an existing contact, which requires the same offer/answer flow.
-                    // For simplicity, we can reuse the invite flow.
                      connectionPanel.innerHTML = `<div class="p-4 space-y-4">
                         <h3 class="font-semibold text-gray-800 text-sm">Reconnect to ${contact.name}</h3>
-                        <p class="text-xs text-gray-500">To reconnect, you must exchange new invite codes.</p>
-                        <button onclick="createP2PInvite()" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-md text-sm">Create a New Invite</button>
+                        <p class="text-xs text-gray-500">To reconnect, one person must create a new invite, and the other must accept it.</p>
+                        <button onclick="document.getElementById('newChatBtn').click()" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-md text-sm">Start a New Invite</button>
                     </div>`;
                 }
             }
