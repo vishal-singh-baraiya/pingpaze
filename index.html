@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ping Paze: Secure Messenger</title>
+    <title>Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -159,7 +159,7 @@
 
             // --- Core Functions (Crypto, DB) ---
             function initDB() {
-                const request = indexedDB.open('secureChatDB_v8', 1);
+                const request = indexedDB.open('secureChatDB_v9', 1); // Version bump to ensure schema update
                 request.onerror = (e) => console.error("DB error:", e.target.errorCode);
                 request.onsuccess = (e) => {
                     db = e.target.result;
@@ -232,6 +232,7 @@
             // --- Unified Chat List, Contacts & Groups ---
             async function renderChatList() {
                 const getStoreData = (storeName) => new Promise((resolve, reject) => {
+                    if (!db) return resolve([]);
                     const transaction = db.transaction([storeName], 'readonly');
                     const store = transaction.objectStore(storeName);
                     const request = store.getAll();
@@ -370,10 +371,6 @@
                     });
                     
                     const fullOffer = pc.localDescription;
-
-                    const myPublicJwk = JSON.parse(myPublicKeyText.value);
-                    const invitePayload = { offer: fullOffer, publicKey: myPublicJwk };
-
                     const contactId = await saveDBItem('contacts', { name, status: 'pending', offer: JSON.stringify(fullOffer) });
                     
                     newChatModal.classList.add('hidden');
@@ -400,6 +397,7 @@
                 try {
                     invitePayload = JSON.parse(atob(inviteCode));
                 } catch (e) {
+                    console.error("Error parsing invite code", e);
                     return showToast('Invalid invite code format.', 'error');
                 }
 
