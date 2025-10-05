@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ping Paze</title>
+    <title>Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -142,7 +142,6 @@
             let dataChannel; let sharedSecretKey = null; let isHost = false; let groupKey = null;
             let hostConnection = { pc: null, dc: null }; let groupPeers = new Map();
             let activeChatId = null;
-            let pendingConnections = new Map();
 
             // --- UI Elements ---
             const myPublicKeyText = document.getElementById('myPublicKey');
@@ -160,7 +159,7 @@
 
             // --- Core Functions (Crypto, DB) ---
             function initDB() {
-                const request = indexedDB.open('secureChatDB_v7', 1);
+                const request = indexedDB.open('secureChatDB_v8', 1);
                 request.onerror = (e) => console.error("DB error:", e.target.errorCode);
                 request.onsuccess = (e) => {
                     db = e.target.result;
@@ -257,7 +256,7 @@
                 chatList.forEach(item => {
                     const itemDiv = document.createElement('div');
                     itemDiv.className = `flex items-center justify-between p-3 rounded-lg hover:bg-slate-100 cursor-pointer`;
-                    itemDiv.dataset.id = item.id; // Correctly add the data-id attribute
+                    itemDiv.dataset.id = item.id;
                     const itemInfo = document.createElement('div');
                     itemInfo.className = 'flex items-center overflow-hidden';
                     const icon = item.type === 'contact'
@@ -319,7 +318,7 @@
                  groupPeers.forEach(peer => peer.pc.close());
                  peerConnection = null; dataChannel = null; sharedSecretKey = null;
                  isHost = false; groupKey = null; hostConnection = { pc: null, dc: null };
-                 groupPeers.clear(); currentMode = null; pendingConnections.clear();
+                 groupPeers.clear(); currentMode = null;
                  updateStatus('Disconnected');
                  connectionPanel.innerHTML = '';
                  if (!isSwitchingChat) {
@@ -360,10 +359,7 @@
 
                 if (!myKeyPair) return showToast('Keys not loaded.', 'error');
                 const pc = createPeerConnectionBase();
-                dataChannel = pc.createDataChannel('chat');
-                setupP2PDataChannel();
-                pc.onconnectionstatechange = () => updateStatus(pc.connectionState);
-
+                
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
@@ -371,13 +367,14 @@
                     if (pc.iceGatheringState === 'complete') resolve();
                     else pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });
                 });
+                
+                const fullOffer = pc.localDescription;
 
                 const myPublicJwk = JSON.parse(myPublicKeyText.value);
-                const invitePayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                const invitePayload = { offer: fullOffer, publicKey: myPublicJwk };
                 const inviteCode = btoa(JSON.stringify(invitePayload));
 
-                const contactId = await saveDBItem('contacts', { name, status: 'pending' });
-                pendingConnections.set(contactId, pc);
+                const contactId = await saveDBItem('contacts', { name, status: 'pending', offer: fullOffer });
                 
                 newChatModal.classList.add('hidden');
                 await renderChatList();
@@ -442,13 +439,8 @@
                 chatTitle.textContent = `Chat with ${contact.name}`;
 
                 if (contact.status === 'pending') {
-                    const pc = pendingConnections.get(contact.id);
-                    if (!pc) {
-                        connectionPanel.innerHTML = `<p class="p-4 text-red-500">Error: Could not find the pending connection details. Please try creating a new invite.</p>`;
-                        return;
-                    }
                     const myPublicJwk = JSON.parse(myPublicKeyText.value);
-                    const invitePayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                    const invitePayload = { offer: contact.offer, publicKey: myPublicJwk };
                     const inviteCode = btoa(JSON.stringify(invitePayload));
 
                     connectionPanel.innerHTML = `
@@ -476,18 +468,21 @@
 
                         const { answer, publicKey: peerPublicKey } = responsePayload;
                         
-                        const pc = pendingConnections.get(contact.id);
-                        if (!pc) return showToast('Error: Pending connection not found.', 'error');
+                        peerConnection = createPeerConnectionBase();
+                        dataChannel = peerConnection.createDataChannel('chat');
+                        setupP2PDataChannel();
+                        peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
                         
                         sharedSecretKey = await deriveSharedSecret(peerPublicKey);
                         if (!sharedSecretKey) return;
                         
-                        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                        await peerConnection.setLocalDescription(new RTCSessionDescription(contact.offer));
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
 
                         contact.publicKey = JSON.stringify(peerPublicKey);
                         delete contact.status;
+                        delete contact.offer;
                         await saveDBItem('contacts', contact, contact.id);
-                        pendingConnections.delete(contact.id);
                         await renderChatList();
                     };
                 } else {
