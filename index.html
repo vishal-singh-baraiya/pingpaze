@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ping: Secure Messenger</title>
+    <title>Ching: Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -180,7 +180,7 @@
 
             // --- Core Functions (Crypto, DB) ---
             function initDB() {
-                const request = indexedDB.open('secureChatDB_v5', 1);
+                const request = indexedDB.open('secureChatDB_v6', 1);
                 request.onerror = (e) => console.error("DB error:", e.target.errorCode);
                 request.onsuccess = (e) => {
                     db = e.target.result;
@@ -378,90 +378,90 @@
                 resetState(true); currentMode = 'p2p'; chatBox.innerHTML = '';
                 chatTitle.textContent = `Chat with ${contact.name}`;
                 
-                connectionPanel.innerHTML = `<div class="space-y-3 p-4">
-                    <h2 class="font-semibold text-gray-800 text-sm">Connect to ${contact.name}</h2>
-                    <button id="p2p_createOfferBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md text-sm">Create Offer</button>
+                connectionPanel.innerHTML = `<div class="p-4 space-y-4">
                     <div>
-                        <label class="block text-xs font-medium text-gray-600">Connection Data:</label>
-                        <textarea id="p2p_connectionData" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300" placeholder="Offer/answer appears here..."></textarea>
-                        <div class="flex space-x-2 mt-2">
-                           <button onclick="document.getElementById('p2p_connectionData').select(); document.execCommand('copy'); showToast('Copied!');" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 text-sm rounded-md">Copy</button>
-                           <button id="p2p_processSignalBtn" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Process</button>
-                        </div>
+                        <h3 class="font-semibold text-gray-800 text-sm">How to Connect to ${contact.name}:</h3>
+                        <p class="text-xs text-gray-500">One person must initiate, the other must process the offer.</p>
+                    </div>
+                    <div class="bg-slate-100 p-3 rounded-lg">
+                        <h4 class="font-medium text-sm text-gray-700">Option 1: Initiate Connection</h4>
+                        <p class="text-xs text-gray-500 mb-2">Click this if you are starting the conversation.</p>
+                        <button id="p2p_initiateBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-md text-sm">Initiate & Get Offer Code</button>
+                    </div>
+                    <div class="bg-slate-100 p-3 rounded-lg">
+                        <h4 class="font-medium text-sm text-gray-700">Option 2: You Received an Offer Code</h4>
+                        <p class="text-xs text-gray-500 mb-2">Paste the offer code from your contact below.</p>
+                        <textarea id="p2p_offerPasteArea" rows="3" class="w-full text-xs p-2 border rounded-md" placeholder="Paste offer code here..."></textarea>
+                        <button id="p2p_processOfferBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-md text-sm">Generate Answer Code</button>
                     </div>
                 </div>`;
 
-                document.getElementById('p2p_createOfferBtn').onclick = async () => {
+                // Initiator Flow
+                document.getElementById('p2p_initiateBtn').onclick = async () => {
                     if (!myKeyPair) return showToast('Keys not loaded.', 'error');
                     peerConnection = createPeerConnectionBase(); sharedSecretKey = await deriveSharedSecret(JSON.parse(contact.publicKey)); if (!sharedSecretKey) return;
                     dataChannel = peerConnection.createDataChannel('chat'); setupP2PDataChannel();
-                    
                     peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
                     
                     const offer = await peerConnection.createOffer(); 
                     await peerConnection.setLocalDescription(offer);
 
-                    // Wait for ICE gathering to complete with a timeout
-                    const iceGatheringPromise = new Promise(resolve => {
-                        if (peerConnection.iceGatheringState === 'complete') {
-                            resolve();
-                        } else {
-                            const checkState = () => {
-                                if (peerConnection.iceGatheringState === 'complete') {
-                                    peerConnection.removeEventListener('icegatheringstatechange', checkState);
-                                    resolve();
-                                }
-                            }
-                            peerConnection.addEventListener('icegatheringstatechange', checkState);
-                        }
+                    await new Promise(resolve => {
+                        if (peerConnection.iceGatheringState === 'complete') { resolve(); } 
+                        else { peerConnection.addEventListener('icegatheringstatechange', () => { if(peerConnection.iceGatheringState === 'complete') resolve(); }); }
                     });
 
-                    await Promise.race([iceGatheringPromise, new Promise(resolve => setTimeout(resolve, 5000))]); // 5 second timeout
-
-                    document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription);
-                    showToast('Offer created. Copy and send it to your peer.');
+                    const offerCode = JSON.stringify(peerConnection.localDescription);
+                    connectionPanel.innerHTML = `<div class="p-4 space-y-4">
+                        <div class="bg-slate-100 p-3 rounded-lg">
+                            <h4 class="font-medium text-sm text-gray-700">Step 1: Send Your Offer Code</h4>
+                            <p class="text-xs text-gray-500 mb-2">Copy this code and send it to ${contact.name}.</p>
+                            <textarea id="p2p_offerCodeArea" rows="3" class="w-full text-xs p-2 border rounded-md" readonly>${offerCode}</textarea>
+                            <button onclick="navigator.clipboard.writeText(document.getElementById('p2p_offerCodeArea').value); showToast('Offer Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Offer Code</button>
+                        </div>
+                        <div class="bg-slate-100 p-3 rounded-lg">
+                            <h4 class="font-medium text-sm text-gray-700">Step 2: Paste Their Answer Code</h4>
+                            <p class="text-xs text-gray-500 mb-2">Once they respond, paste their answer here.</p>
+                            <textarea id="p2p_answerPasteArea" rows="3" class="w-full text-xs p-2 border rounded-md" placeholder="Paste answer code here..."></textarea>
+                            <button id="p2p_finalizeBtn" class="w-full mt-2 bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-md text-sm">Connect</button>
+                        </div>
+                    </div>`;
+                    
+                    document.getElementById('p2p_finalizeBtn').onclick = async () => {
+                        const answerCode = document.getElementById('p2p_answerPasteArea').value;
+                        if (!answerCode.trim()) return showToast('Answer code is empty.', 'error');
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerCode)));
+                    };
                 };
 
-                document.getElementById('p2p_processSignalBtn').onclick = async () => {
-                    const signalData = document.getElementById('p2p_connectionData').value.trim();
-                    if (!signalData) return showToast('Connection Data is empty.', 'error');
-                    const signal = JSON.parse(signalData);
+                // Receiver Flow
+                document.getElementById('p2p_processOfferBtn').onclick = async () => {
+                    const offerCode = document.getElementById('p2p_offerPasteArea').value;
+                    if (!offerCode.trim()) return showToast('Offer code is empty.', 'error');
+                    
+                    if (!myKeyPair) return showToast('Keys not loaded.', 'error');
+                    peerConnection = createPeerConnectionBase(); sharedSecretKey = await deriveSharedSecret(JSON.parse(contact.publicKey)); if (!sharedSecretKey) return;
+                    peerConnection.ondatachannel = e => { dataChannel = e.channel; setupP2PDataChannel(); };
+                    peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
+                    
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(offerCode)));
+                    const answer = await peerConnection.createAnswer(); 
+                    await peerConnection.setLocalDescription(answer);
 
-                    if (signal.type === 'offer') {
-                        if (!myKeyPair) return showToast('Keys not loaded.', 'error');
-                        peerConnection = createPeerConnectionBase(); sharedSecretKey = await deriveSharedSecret(JSON.parse(contact.publicKey)); if (!sharedSecretKey) return;
-                        peerConnection.ondatachannel = e => { dataChannel = e.channel; setupP2PDataChannel(); };
-                        
-                        peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
-                        
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
-                        const answer = await peerConnection.createAnswer(); 
-                        await peerConnection.setLocalDescription(answer);
+                    await new Promise(resolve => {
+                        if (peerConnection.iceGatheringState === 'complete') { resolve(); } 
+                        else { peerConnection.addEventListener('icegatheringstatechange', () => { if(peerConnection.iceGatheringState === 'complete') resolve(); }); }
+                    });
 
-                        // Wait for ICE gathering to complete with a timeout
-                        const iceGatheringPromise = new Promise(resolve => {
-                            if (peerConnection.iceGatheringState === 'complete') {
-                                resolve();
-                            } else {
-                                const checkState = () => {
-                                    if (peerConnection.iceGatheringState === 'complete') {
-                                        peerConnection.removeEventListener('icegatheringstatechange', checkState);
-                                        resolve();
-                                    }
-                                }
-                                peerConnection.addEventListener('icegatheringstatechange', checkState);
-                            }
-                        });
-                        
-                        await Promise.race([iceGatheringPromise, new Promise(resolve => setTimeout(resolve, 5000))]); // 5 second timeout
-                        
-                        document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription);
-                        showToast('Answer created. Copy and send it back.');
-
-                    } else if (signal.type === 'answer') { 
-                        if (!peerConnection) return showToast('Please create an offer first before processing an answer.', 'error');
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(signal)); 
-                    }
+                    const answerCode = JSON.stringify(peerConnection.localDescription);
+                    connectionPanel.innerHTML = `<div class="p-4 space-y-4">
+                        <div class="bg-slate-100 p-3 rounded-lg">
+                            <h4 class="font-medium text-sm text-gray-700">Answer Code Generated!</h4>
+                            <p class="text-xs text-gray-500 mb-2">Copy this code and send it back to ${contact.name} to finalize the connection.</p>
+                            <textarea id="p2p_answerCodeArea" rows="3" class="w-full text-xs p-2 border rounded-md" readonly>${answerCode}</textarea>
+                            <button onclick="navigator.clipboard.writeText(document.getElementById('p2p_answerCodeArea').value); showToast('Answer Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Answer Code</button>
+                        </div>
+                    </div>`;
                 };
             }
             
@@ -476,8 +476,6 @@
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun2.l.google.com:19302' },
-                    // Using a free, public TURN server for demonstration.
-                    // For a production app, you should deploy your own TURN server (e.g., Coturn).
                     {
                         urls: "turn:global.turn.twilio.com:3478",
                         username: "7b79f82662c382e8d3567a423528ce33a0058b8f2d65d4484050a491a134e195",
@@ -520,40 +518,39 @@
                     hostConnection = { pc, dc: pc.createDataChannel('chat'), tempSecret, hostPublicKey }; 
                     setupGroupClientDataChannel();
                     
-                    pc.onicecandidate = async e => {
-                        if (!e.candidate) {
-                            const myPublicJwk = JSON.parse(myPublicKeyText.value); 
-                            const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
-                            const data = JSON.stringify(offerPayload, null, 2);
-                            
-                            newChatModal.classList.add('hidden');
-                            connectionPanel.innerHTML = `<div class="space-y-3 p-4">
-                                <h2 class="font-semibold text-gray-800 text-sm">Join Group</h2>
-                                <p class="text-xs text-gray-500">Copy this offer and send it to the group host.</p>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-600">Your Join Offer:</label>
-                                    <textarea id="group_offer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300" readonly>${data}</textarea>
-                                </div>
-                                <p class="text-xs text-gray-500">Paste the host's answer below to connect.</p>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-600">Host's Answer:</label>
-                                    <textarea id="group_answer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300"></textarea>
-                                </div>
-                                <button id="group_connect_btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Connect</button>
-                            </div>`;
-
-                            document.getElementById('group_connect_btn').onclick = async () => {
-                                const answerData = document.getElementById('group_answer_data').value.trim();
-                                if (answerData) {
-                                    await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerData)));
-                                } else {
-                                    showToast('Host answer is required.', 'error');
-                                }
-                            };
-                        }
-                    };
                     const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
-                } catch(e) { showToast('Invalid host public key.', 'error'); }
+                    await new Promise(resolve => {
+                        if (pc.iceGatheringState === 'complete') { resolve(); } 
+                        else { pc.addEventListener('icegatheringstatechange', () => { if(pc.iceGatheringState === 'complete') resolve(); }); }
+                    });
+
+                    const myPublicJwk = JSON.parse(myPublicKeyText.value); 
+                    const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                    const data = JSON.stringify(offerPayload, null, 2);
+                    
+                    newChatModal.classList.add('hidden');
+                    connectionPanel.innerHTML = `<div class="p-4 space-y-4">
+                        <div class="bg-slate-100 p-3 rounded-lg">
+                            <h4 class="font-medium text-sm text-gray-700">Step 1: Send Your Join Offer</h4>
+                            <p class="text-xs text-gray-500 mb-2">Copy this code and send it to the group host.</p>
+                            <textarea id="group_offer_data" rows="3" class="w-full text-xs p-2 border rounded-md" readonly>${data}</textarea>
+                            <button onclick="navigator.clipboard.writeText(document.getElementById('group_offer_data').value); showToast('Offer Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Join Offer</button>
+                        </div>
+                        <div class="bg-slate-100 p-3 rounded-lg">
+                            <h4 class="font-medium text-sm text-gray-700">Step 2: Paste Host's Answer</h4>
+                            <p class="text-xs text-gray-500 mb-2">Once they respond, paste their answer here to connect.</p>
+                            <textarea id="group_answer_data" rows="3" class="w-full text-xs p-2 border rounded-md" placeholder="Paste answer code here..."></textarea>
+                            <button id="group_connect_btn" class="w-full mt-2 bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-md text-sm">Connect to Group</button>
+                        </div>
+                    </div>`;
+
+                    document.getElementById('group_connect_btn').onclick = async () => {
+                        const answerData = document.getElementById('group_answer_data').value.trim();
+                        if (answerData) { await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerData))); } 
+                        else { showToast('Host answer is required.', 'error'); }
+                    };
+
+                } catch(e) { console.error(e); showToast('Invalid host public key.', 'error'); }
             }
             
             async function startHostingSavedGroup(group) {
@@ -564,7 +561,15 @@
                 chatTitle.textContent = `Group: ${group.name} (Host)`;
                 chatBox.innerHTML = '';
                 displayMessage({ text: `Resumed hosting for group "${group.name}". Members can now rejoin using your public key.` }, "System");
-                connectionPanel.innerHTML = `<div class="p-4 space-y-2"><p class="text-xs text-gray-500">Paste a joiner's offer below, process it, and send the answer back to them.</p><div><label for="host_joinerOffer" class="block text-sm font-medium text-gray-600">Joiner's Offer:</label><textarea id="host_joinerOffer" rows="3" class="w-full mt-1 bg-white rounded-md p-2 text-xs border"></textarea></div><button id="host_processOfferBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Process Offer & Copy Answer</button></div>`;
+                connectionPanel.innerHTML = `<div class="p-4 space-y-2">
+                    <h3 class="font-semibold text-gray-800 text-sm">Waiting for Members to Join</h3>
+                    <p class="text-xs text-gray-500">Share your public key (from Settings) with members. When a member sends you their offer code, paste it below.</p>
+                    <div>
+                        <label for="host_joinerOffer" class="block text-sm font-medium text-gray-600">Joiner's Offer Code:</label>
+                        <textarea id="host_joinerOffer" rows="3" class="w-full mt-1 bg-white rounded-md p-2 text-xs border"></textarea>
+                    </div>
+                    <button id="host_processOfferBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Generate & Copy Answer</button>
+                </div>`;
                 document.getElementById('host_processOfferBtn').onclick = handleHostProcessOffer;
             }
 
@@ -574,41 +579,47 @@
                 const hostPublicKeyJwk = JSON.parse(group.hostPublicKey.trim()); const tempSecret = await deriveSharedSecret(hostPublicKeyJwk); if (!tempSecret) return;
                 const pc = createPeerConnectionBase(); hostConnection = { pc, dc: pc.createDataChannel('chat'), tempSecret, hostPublicKey: group.hostPublicKey };
                 setupGroupClientDataChannel(true, group.name);
-                pc.onicecandidate = async e => {
-                    if (!e.candidate) {
-                        const myPublicJwk = JSON.parse(myPublicKeyText.value); const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
-                        const data = JSON.stringify(offerPayload, null, 2);
-                        
-                        connectionPanel.innerHTML = `<div class="space-y-3 p-4">
-                            <h2 class="font-semibold text-gray-800 text-sm">Rejoin ${group.name}</h2>
-                            <p class="text-xs text-gray-500">Copy this offer and send it to the group host.</p>
-                            <div><label class="block text-xs font-medium text-gray-600">Your Join Offer:</label><textarea id="group_offer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300" readonly>${data}</textarea></div>
-                            <p class="text-xs text-gray-500">Paste the host's answer below to connect.</p>
-                            <div><label class="block text-xs font-medium text-gray-600">Host's Answer:</label><textarea id="group_answer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300"></textarea></div>
-                            <button id="group_connect_btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Connect</button>
-                        </div>`;
-
-                        document.getElementById('group_connect_btn').onclick = async () => {
-                            const answerData = document.getElementById('group_answer_data').value.trim();
-                            if (answerData) await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerData)));
-                            else showToast('Host answer is required.', 'error');
-                        };
-                    }
-                };
+                
                 const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+                await new Promise(resolve => {
+                    if (pc.iceGatheringState === 'complete') { resolve(); } 
+                    else { pc.addEventListener('icegatheringstatechange', () => { if(pc.iceGatheringState === 'complete') resolve(); }); }
+                });
+
+                const myPublicJwk = JSON.parse(myPublicKeyText.value); const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                const data = JSON.stringify(offerPayload, null, 2);
+                
+                connectionPanel.innerHTML = `<div class="p-4 space-y-4">
+                    <div class="bg-slate-100 p-3 rounded-lg">
+                        <h4 class="font-medium text-sm text-gray-700">Step 1: Send Re-join Offer</h4>
+                        <p class="text-xs text-gray-500 mb-2">Copy this code and send it to the group host.</p>
+                        <textarea id="group_offer_data" rows="3" class="w-full text-xs p-2 border rounded-md" readonly>${data}</textarea>
+                        <button onclick="navigator.clipboard.writeText(document.getElementById('group_offer_data').value); showToast('Offer Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Join Offer</button>
+                    </div>
+                    <div class="bg-slate-100 p-3 rounded-lg">
+                        <h4 class="font-medium text-sm text-gray-700">Step 2: Paste Host's Answer</h4>
+                        <p class="text-xs text-gray-500 mb-2">Once they respond, paste their answer here to connect.</p>
+                        <textarea id="group_answer_data" rows="3" class="w-full text-xs p-2 border rounded-md" placeholder="Paste answer code here..."></textarea>
+                        <button id="group_connect_btn" class="w-full mt-2 bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-md text-sm">Connect to Group</button>
+                    </div>
+                </div>`;
+
+                document.getElementById('group_connect_btn').onclick = async () => {
+                    const answerData = document.getElementById('group_answer_data').value.trim();
+                    if (answerData) await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerData)));
+                    else showToast('Host answer is required.', 'error');
+                };
+
                 showToast(`Re-initiating connection to ${group.name}...`);
             }
             
             async function handleHostProcessOffer() {
-                const offerPayload = JSON.parse(document.getElementById('host_joinerOffer').value); const joinerPublicKey = offerPayload.publicKey;
+                const offerData = document.getElementById('host_joinerOffer').value;
+                if (!offerData.trim()) return showToast('Offer code is empty.', 'error');
+                const offerPayload = JSON.parse(offerData); const joinerPublicKey = offerPayload.publicKey;
                 const tempSecret = await deriveSharedSecret(joinerPublicKey); if (!tempSecret) return showToast("Could not derive secret with joiner.", 'error');
                 const pc = createPeerConnectionBase(); const peerId = crypto.randomUUID(); const peerName = `Peer-${Math.floor(1000 + Math.random() * 9000)}`;
-                pc.onicecandidate = e => {
-                    if (!e.candidate) {
-                        const answer = JSON.stringify(pc.localDescription);
-                        navigator.clipboard.writeText(answer).then(() => showToast('Answer copied to clipboard. Send it to the joiner.'));
-                    }
-                };
+                
                 pc.ondatachannel = (e) => {
                     const dc = e.channel; groupPeers.set(peerId, { pc, dc, name: peerName, tempSecret }); updateGroupMembersList();
                     dc.onopen = async () => {
@@ -623,8 +634,21 @@
                     };
                     dc.onclose = () => { showToast(`${peerName} disconnected.`); groupPeers.delete(peerId); updateGroupMembersList(); };
                 };
-                await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.offer)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
+                
+                await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.offer)); 
+                const answer = await pc.createAnswer(); 
+                await pc.setLocalDescription(answer);
+                
+                await new Promise(resolve => {
+                    if (pc.iceGatheringState === 'complete') { resolve(); } 
+                    else { pc.addEventListener('icegatheringstatechange', () => { if(pc.iceGatheringState === 'complete') resolve(); }); }
+                });
+
+                const answerCode = JSON.stringify(pc.localDescription);
+                navigator.clipboard.writeText(answerCode).then(() => showToast('Answer copied to clipboard! Send it to the joiner.'));
+                document.getElementById('host_joinerOffer').value = '';
             }
+
             function setupGroupClientDataChannel(isJoiningSaved = false, groupName = '') {
                 hostConnection.dc.onopen = () => { updateStatus('connected'); chatTitle.textContent = groupName || `Group Chat`; };
                 hostConnection.dc.onmessage = async (e) => {
@@ -635,7 +659,7 @@
                             displayMessage({ text: "Secure group channel established!" }, "System");
                             if (!isJoiningSaved) {
                                 const name = prompt("Enter a name to save this group:");
-                                if (name) await saveDBItem('groups', {name: name, isHost: false, groupKey: decryptedKey.payload, hostPublicKey: hostConnection.hostPublicKey});
+                                if (name) await saveDBItem('groups', {name: name, isHost: false, groupKey: decryptedKey.payload, hostPublicKey: JSON.stringify(hostConnection.hostPublicKey)});
                             }
                         }
                     } else {
