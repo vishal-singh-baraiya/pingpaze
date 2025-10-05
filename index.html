@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Messenger</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        /* Simple scrollbar styling for webkit browsers */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #bdbdbd; border-radius: 3px;}
+        ::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
+
+        .toast {
+            visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center;
+            border-radius: 8px; padding: 16px; position: fixed; z-index: 51; left: 50%;
+            transform: translateX(-50%); bottom: 30px; opacity: 0;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+        .toast.show { visibility: visible; opacity: 1; }
+
+        .chat-bg {
+            background-color: #e5ddd5;
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M25 10 C25 10, 25 20, 35 20 C45 20, 45 10, 45 10' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M75 10 C75 10, 75 20, 85 20 C95 20, 95 10, 95 10' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M25 60 C25 60, 25 70, 35 70 C45 70, 45 60, 45 60' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M75 60 C75 60, 75 70, 85 70 C95 70, 95 60, 95 60' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3C/svg%3E");
+        }
+        
+        .active-chat {
+            background-color: #e2e8f0; /* bg-slate-200 */
+        }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-7xl mx-auto bg-white rounded-lg shadow-2xl flex h-[95vh] min-h-[700px]">
+        <!-- Left Panel: Chat List -->
+        <div class="w-full md:w-[35%] lg:w-[30%] border-r border-gray-200 flex flex-col bg-slate-50 relative">
+            <div class="flex-shrink-0 p-4 border-b border-gray-200 flex justify-between items-center bg-slate-100">
+                <h1 class="text-xl font-bold text-teal-600">Secure Messenger</h1>
+                <div class="flex items-center space-x-2">
+                     <button id="settingsBtn" title="Settings" class="text-gray-500 hover:text-gray-800 p-2 rounded-full hover:bg-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="chatList" class="overflow-y-auto flex-grow p-2">
+                <p class="text-sm text-gray-500 text-center p-4">No chats yet. Start a new one!</p>
+            </div>
+
+            <button id="newChatBtn" title="New Chat" class="absolute bottom-6 right-6 bg-teal-500 hover:bg-teal-600 text-white rounded-full p-4 shadow-lg transition-transform hover:scale-110">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+            </button>
+        </div>
+
+        <!-- Right Panel: Chat -->
+        <div class="w-full md:w-[65%] lg:w-[70%] flex flex-col bg-slate-100 h-full">
+            <div id="chat-header" class="flex items-center p-3 border-b border-gray-200 bg-slate-50 flex-shrink-0 min-h-[70px]">
+                 <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3">
+                    <svg class="w-6 h-6 text-gray-500" id="chat-header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                 </div>
+                 <div>
+                    <h2 id="chat-title" class="font-semibold text-gray-700">No Chat Active</h2>
+                    <p id="status" class="text-xs text-gray-500">Status: Disconnected</p>
+                 </div>
+            </div>
+
+            <div class="flex-grow overflow-y-auto p-4 md:p-6 chat-bg" id="chatBox">
+                <div class="flex flex-col items-center justify-center h-full text-center text-gray-500">
+                    <svg class="w-24 h-24 mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                    <h3 class="text-xl font-medium">Welcome to Secure Messenger</h3>
+                    <p class="max-w-sm mt-2">Click the chat bubble button to start a new conversation. All messages are end-to-end encrypted and never stored on a server.</p>
+                </div>
+            </div>
+
+            <div id="connectionPanel" class="p-4 bg-slate-50 border-t border-gray-200"></div>
+
+            <div class="bg-slate-50 p-4 flex items-center flex-shrink-0 border-t border-gray-200">
+                <form id="messageForm" class="flex items-center w-full space-x-3">
+                    <input type="text" id="messageInput" class="flex-grow bg-white text-gray-800 rounded-full py-3 px-5 focus:outline-none focus:ring-2 focus:ring-teal-500 border border-gray-200" placeholder="Type a message..." disabled>
+                    <button type="submit" id="sendBtn" class="bg-teal-500 text-white rounded-full p-3 hover:bg-teal-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors" disabled>
+                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                 <h2 class="text-lg font-bold text-gray-800">Settings</h2>
+                 <button id="closeSettingsBtn" class="text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="bg-white p-4 rounded-lg border border-gray-200">
+                <h2 class="font-semibold text-gray-800 mb-2">Your Identity</h2>
+                <p class="text-xs text-gray-500 mb-3">Your secure keys are stored on this device. Share your public key to let others contact you.</p>
+                <button id="generateKeysBtn" class="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-md transition-colors text-sm">
+                    Generate / Load My Keys
+                </button>
+                <div class="mt-3">
+                    <label for="myPublicKey" class="block text-xs font-medium text-gray-600">Your Public Key (Share to connect)</label>
+                    <textarea id="myPublicKey" readonly rows="4" class="w-full mt-1 bg-gray-100 text-gray-600 rounded-md p-2 text-xs border border-gray-300 resize-none"></textarea>
+                    <button id="copyMyKeyBtn" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 text-sm rounded-md transition-colors">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="newChatModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+             <div class="flex justify-between items-center mb-4">
+                 <h2 class="text-lg font-bold text-gray-800">New Chat</h2>
+                 <button id="closeNewChatBtn" class="text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <button id="newContactOptionBtn" class="w-full text-left p-3 hover:bg-slate-100 rounded-md">New Contact</button>
+                <button id="newGroupOptionBtn" class="w-full text-left p-3 hover:bg-slate-100 rounded-md">New Group</button>
+                <div id="joinGroupContainer">
+                    <p class="text-sm font-medium text-gray-700 mt-2">Join a Group</p>
+                    <textarea id="group_inviteCode" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300" placeholder="Paste host's public key..."></textarea>
+                    <button id="group_joinBtn" class="w-full mt-2 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Join Group</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="addContactModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-lg font-bold mb-4 text-gray-800">Add New Contact</h2>
+            <form id="addContactForm">
+                <div class="mb-4">
+                    <label for="contactName" class="block text-sm font-medium text-gray-700">Name</label>
+                    <input type="text" id="contactName" class="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-teal-500 focus:border-teal-500" required>
+                </div>
+                <div class="mb-4">
+                    <label for="contactPublicKey" class="block text-sm font-medium text-gray-700">Public Key</label>
+                    <textarea id="contactPublicKey" rows="4" class="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-teal-500 focus:border-teal-500" required></textarea>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancelAddContactBtn" class="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">Cancel</button>
+                    <button type="submit" class="bg-teal-500 text-white py-2 px-4 rounded-md hover:bg-teal-600 transition-colors">Save Contact</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            let db; let myKeyPair = null; let currentMode = null; let peerConnection;
+            let dataChannel; let sharedSecretKey = null; let isHost = false; let groupKey = null;
+            let hostConnection = { pc: null, dc: null }; let groupPeers = new Map();
+            let activeChatId = null;
+
+            // --- UI Elements ---
+            const myPublicKeyText = document.getElementById('myPublicKey');
+            const statusEl = document.getElementById('status');
+            const chatBox = document.getElementById('chatBox');
+            const messageForm = document.getElementById('messageForm');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const toastEl = document.getElementById('toast');
+            const chatTitle = document.getElementById('chat-title');
+            const connectionPanel = document.getElementById('connectionPanel');
+
+            const settingsModal = document.getElementById('settingsModal');
+            const newChatModal = document.getElementById('newChatModal');
+            const addContactModal = document.getElementById('addContactModal');
+
+            // --- Core Functions (Crypto, DB) ---
+            function initDB() {
+                const request = indexedDB.open('secureChatDB_v5', 1);
+                request.onerror = (e) => console.error("DB error:", e.target.errorCode);
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    loadMyKeys();
+                    renderChatList();
+                };
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('keyStore')) db.createObjectStore('keyStore', { keyPath: 'name' });
+                    if (!db.objectStoreNames.contains('contacts')) db.createObjectStore('contacts', { keyPath: 'id', autoIncrement: true });
+                    if (!db.objectStoreNames.contains('groups')) db.createObjectStore('groups', { keyPath: 'id', autoIncrement: true });
+                };
+            }
+
+            async function generateAndStoreKeys() {
+                try {
+                    myKeyPair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+                    const [publicKeyJwk, privateKeyJwk] = await Promise.all([
+                        crypto.subtle.exportKey('jwk', myKeyPair.publicKey),
+                        crypto.subtle.exportKey('jwk', myKeyPair.privateKey)
+                    ]);
+                    myPublicKeyText.value = JSON.stringify(publicKeyJwk, null, 2);
+                    db.transaction('keyStore', 'readwrite').objectStore('keyStore').put({ name: 'myKeyPair', value: { publicKey: publicKeyJwk, privateKey: privateKeyJwk } });
+                    showToast('New keys generated and saved!');
+                } catch (error) { console.error('Key generation failed:', error); showToast('Error: Key generation failed.', 'error'); }
+            }
+            
+            async function loadMyKeys() {
+                if (!db) return;
+                const request = db.transaction('keyStore').objectStore('keyStore').get('myKeyPair');
+                request.onsuccess = async () => {
+                    if (request.result) {
+                        const { publicKey, privateKey } = request.result.value;
+                        myKeyPair = {
+                            publicKey: await crypto.subtle.importKey('jwk', publicKey, { name: 'ECDH', namedCurve: 'P-256' }, true, []),
+                            privateKey: await crypto.subtle.importKey('jwk', privateKey, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey'])
+                        };
+                        myPublicKeyText.value = JSON.stringify(publicKey, null, 2);
+                        showToast('Your keys were loaded from this device.');
+                    } else { await generateAndStoreKeys(); }
+                };
+            }
+
+            async function deriveSharedSecret(peerPublicKeyJwk) {
+                try {
+                    const peerPublicKey = await crypto.subtle.importKey('jwk', peerPublicKeyJwk, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
+                    return await crypto.subtle.deriveKey({ name: 'ECDH', public: peerPublicKey }, myKeyPair.privateKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+                } catch (error) { console.error("Failed to derive secret:", error); showToast("Error deriving secret. Invalid peer key?", 'error'); return null; }
+            }
+
+            async function encrypt(data, key) {
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const encoded = new TextEncoder().encode(JSON.stringify(data));
+                const encryptedContent = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+                const buffer = new Uint8Array(iv.length + encryptedContent.byteLength);
+                buffer.set(iv);
+                buffer.set(new Uint8Array(encryptedContent), iv.length);
+                return buffer;
+            }
+
+            async function decrypt(buffer, key) {
+                try {
+                    const data = new Uint8Array(buffer);
+                    const iv = data.slice(0, 12);
+                    const content = data.slice(12);
+                    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, content);
+                    return JSON.parse(new TextDecoder().decode(decrypted));
+                } catch (e) { console.error("Decryption failed:", e); showToast("Error: Received a corrupted message.", 'error'); return null; }
+            }
+            
+            // --- Unified Chat List, Contacts & Groups ---
+            async function renderChatList() {
+                const getStoreData = (storeName) => new Promise((resolve, reject) => {
+                    const transaction = db.transaction([storeName], 'readonly');
+                    const store = transaction.objectStore(storeName);
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+
+                const [contacts, groups] = await Promise.all([getStoreData('contacts'), getStoreData('groups')]);
+
+                const chatList = [
+                    ...contacts.map(c => ({...c, type: 'contact'})),
+                    ...groups.map(g => ({...g, type: 'group'}))
+                ].sort((a, b) => a.name.localeCompare(b.name));
+
+                const chatListEl = document.getElementById('chatList');
+                chatListEl.innerHTML = '';
+                if (chatList.length === 0) {
+                    chatListEl.innerHTML = '<p class="text-sm text-gray-500 text-center p-4">No chats yet. Start a new one!</p>';
+                    return;
+                }
+
+                chatList.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = `flex items-center justify-between p-3 rounded-lg hover:bg-slate-100 cursor-pointer`;
+                    const itemInfo = document.createElement('div');
+                    itemInfo.className = 'flex items-center overflow-hidden';
+                    const icon = item.type === 'contact'
+                        ? `<svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>`
+                        : `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>`;
+                    
+                    itemInfo.innerHTML = `
+                        <div class="w-10 h-10 rounded-full ${item.type === 'contact' ? 'bg-gray-300' : 'bg-blue-200'} flex items-center justify-center mr-3 flex-shrink-0">
+                           ${icon}
+                        </div>
+                        <span class="font-medium text-sm text-gray-700 truncate">${item.name.replace(/</g, "&lt;")}</span>`;
+                    
+                    itemDiv.onclick = () => {
+                        document.querySelectorAll('#chatList > div').forEach(el => el.classList.remove('active-chat'));
+                        itemDiv.classList.add('active-chat');
+                        activeChatId = item.id;
+                        if (item.type === 'contact') startP2PChat(item);
+                        else startGroupChat(item);
+                    };
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'text-red-500 hover:text-red-700 p-1 rounded-full flex-shrink-0 ml-2 opacity-0 group-hover:opacity-100 transition-opacity';
+                    deleteBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+                    deleteBtn.onclick = (e) => { 
+                        e.stopPropagation();
+                        if (confirm(`Are you sure you want to delete ${item.name}?`)) {
+                             if (item.type === 'contact') deleteDBItem('contacts', item.id);
+                             else deleteDBItem('groups', item.id);
+                        }
+                    };
+
+                    itemDiv.classList.add('group');
+                    itemDiv.appendChild(itemInfo);
+                    itemDiv.appendChild(deleteBtn);
+                    chatListEl.appendChild(itemDiv);
+                });
+            }
+
+            function saveDBItem(storeName, item) {
+                return new Promise((resolve, reject) => {
+                    if (storeName === 'contacts') try { JSON.parse(item.publicKey); } catch (e) { showToast('Invalid Public Key format.', 'error'); return reject(); }
+                    const transaction = db.transaction([storeName], 'readwrite');
+                    transaction.objectStore(storeName).add(item);
+                    transaction.oncomplete = () => { showToast(`${storeName.slice(0, -1)} saved!`); renderChatList(); resolve(); };
+                    transaction.onerror = (e) => { showToast(`Error saving ${storeName.slice(0, -1)}.`, 'error'); reject(e); };
+                });
+            }
+
+            function deleteDBItem(storeName, id) {
+                const transaction = db.transaction([storeName], 'readwrite');
+                transaction.objectStore(storeName).delete(id);
+                transaction.oncomplete = () => { showToast(`${storeName.slice(0, -1)} deleted.`); renderChatList(); };
+            }
+
+            // --- UI & State Management ---
+            function resetState(isSwitchingChat = false) {
+                 if (peerConnection) peerConnection.close();
+                 if (hostConnection.pc) hostConnection.pc.close();
+                 groupPeers.forEach(peer => peer.pc.close());
+                 peerConnection = null; dataChannel = null; sharedSecretKey = null;
+                 isHost = false; groupKey = null; hostConnection = { pc: null, dc: null };
+                 groupPeers.clear(); currentMode = null;
+                 updateStatus('Disconnected');
+                 connectionPanel.innerHTML = '';
+                 if (!isSwitchingChat) {
+                    activeChatId = null;
+                    document.querySelectorAll('#chatList > div').forEach(el => el.classList.remove('active-chat'));
+                    chatTitle.textContent = "No Chat Active";
+                    chatBox.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-center text-gray-500"><svg class="w-24 h-24 mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg><h3 class="text-xl font-medium">Welcome</h3><p>Click the chat bubble button to start a new conversation.</p></div>`;
+                 }
+            }
+
+            function updateStatus(status) {
+                const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+                 switch(status) {
+                    case 'connected': statusEl.textContent = `Status: ${statusText}`; statusEl.className = 'text-xs text-green-500'; messageInput.disabled = false; sendBtn.disabled = false; connectionPanel.innerHTML = ''; if(chatBox.children[0]?.classList.contains('text-center')) chatBox.innerHTML = ''; displayMessage({ text: "You are now connected securely." }, "System"); break;
+                    case 'connecting': statusEl.textContent = `Status: ${statusText}`; statusEl.className = 'text-xs text-yellow-500'; break;
+                    default: statusEl.textContent = `Status: ${statusText}`; statusEl.className = 'text-xs text-red-500'; messageInput.disabled = true; sendBtn.disabled = true; break;
+                 }
+            }
+            
+            function displayMessage(msg, sender) {
+                const msgDiv = document.createElement('div');
+                let content = '', alignment = '';
+                if (sender === 'System') { content = msg.text; alignment = 'bg-yellow-100 text-yellow-800 text-sm p-2 rounded-md my-2 mx-auto shadow-sm max-w-md text-center'; }
+                else if (sender === 'Me') { content = msg.text.replace(/</g, "&lt;").replace(/>/g, "&gt;"); alignment = 'bg-emerald-200 p-3 rounded-lg rounded-br-none max-w-sm md:max-w-md my-1 ml-auto shadow'; }
+                else {
+                    let senderName = '';
+                    if (currentMode === 'group' && isHost) senderName = `<strong>${(groupPeers.get(msg.senderId)?.name || 'Peer').replace(/</g, "&lt;")}</strong><br>`;
+                    content = `${senderName}${msg.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}`;
+                    alignment = 'bg-white p-3 rounded-lg rounded-bl-none max-w-sm md:max-w-md my-1 mr-auto shadow';
+                }
+                msgDiv.innerHTML = content; msgDiv.className = `break-words ${alignment}`; chatBox.appendChild(msgDiv); chatBox.scrollTop = chatBox.scrollHeight;
+            }
+
+            // --- Chat Initiation ---
+            function startP2PChat(contact) {
+                resetState(true); currentMode = 'p2p'; chatBox.innerHTML = '';
+                chatTitle.textContent = `Chat with ${contact.name}`;
+                
+                connectionPanel.innerHTML = `<div class="space-y-3 p-4">
+                    <h2 class="font-semibold text-gray-800 text-sm">Connect to ${contact.name}</h2>
+                    <button id="p2p_createOfferBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md text-sm">Create Offer</button>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600">Connection Data:</label>
+                        <textarea id="p2p_connectionData" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300" placeholder="Offer/answer appears here..."></textarea>
+                        <div class="flex space-x-2 mt-2">
+                           <button onclick="document.getElementById('p2p_connectionData').select(); document.execCommand('copy'); showToast('Copied!');" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 text-sm rounded-md">Copy</button>
+                           <button id="p2p_processSignalBtn" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Process</button>
+                        </div>
+                    </div>
+                </div>`;
+
+                document.getElementById('p2p_createOfferBtn').onclick = async () => {
+                    if (!myKeyPair) return showToast('Keys not loaded.', 'error');
+                    peerConnection = createPeerConnectionBase(); sharedSecretKey = await deriveSharedSecret(JSON.parse(contact.publicKey)); if (!sharedSecretKey) return;
+                    dataChannel = peerConnection.createDataChannel('chat'); setupP2PDataChannel();
+                    peerConnection.onicecandidate = e => !e.candidate && (document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription));
+                    peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
+                    const offer = await peerConnection.createOffer(); await peerConnection.setLocalDescription(offer);
+                };
+
+                document.getElementById('p2p_processSignalBtn').onclick = async () => {
+                    const signal = JSON.parse(document.getElementById('p2p_connectionData').value.trim());
+                    if (signal.type === 'offer') {
+                        if (!myKeyPair) return showToast('Keys not loaded.', 'error');
+                        peerConnection = createPeerConnectionBase(); sharedSecretKey = await deriveSharedSecret(JSON.parse(contact.publicKey)); if (!sharedSecretKey) return;
+                        peerConnection.ondatachannel = e => { dataChannel = e.channel; setupP2PDataChannel(); };
+                        peerConnection.onicecandidate = e => !e.candidate && (document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription));
+                        peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+                        const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer);
+                    } else if (signal.type === 'answer') { await peerConnection.setRemoteDescription(new RTCSessionDescription(signal)); }
+                };
+            }
+            
+            function startGroupChat(group) {
+                if (group.isHost) startHostingSavedGroup(group);
+                else joinSavedGroup(group);
+            }
+
+            // --- WebRTC Logic (Generic) & P2P ---
+            function createPeerConnectionBase() { return new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }); }
+            function setupP2PDataChannel() { dataChannel.onopen = () => updateStatus('connected'); dataChannel.onclose = () => updateStatus('disconnected'); dataChannel.onmessage = async (e) => { const msg = await decrypt(e.data, sharedSecretKey); if (msg) displayMessage(msg, 'Peer'); }; }
+
+            // --- Group Mode Logic ---
+            async function createNewGroup() {
+                const groupName = prompt("Enter a name for your new group:");
+                if (!groupName) return;
+                isHost = true; 
+                groupKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); 
+                const groupKeyJwk = await crypto.subtle.exportKey('jwk', groupKey);
+                await saveDBItem('groups', { name: groupName, isHost: true, groupKey: groupKeyJwk });
+                showToast('Group created! Select it from the list to start hosting.');
+                newChatModal.classList.add('hidden');
+            }
+
+            async function joinNewGroup() {
+                const hostPublicKey = document.getElementById('group_inviteCode').value;
+                if (!hostPublicKey.trim()) return showToast('Host public key is required.', 'error');
+                
+                resetState(true); currentMode = 'group';
+                isHost = false; 
+                const hostPublicKeyJwk = JSON.parse(hostPublicKey.trim()); 
+                const tempSecret = await deriveSharedSecret(hostPublicKeyJwk); if (!tempSecret) return;
+                
+                const pc = createPeerConnectionBase(); 
+                hostConnection = { pc, dc: pc.createDataChannel('chat'), tempSecret, hostPublicKey }; 
+                setupGroupClientDataChannel();
+                
+                pc.onicecandidate = async e => {
+                    if (!e.candidate) {
+                        const myPublicJwk = JSON.parse(myPublicKeyText.value); 
+                        const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                        const data = JSON.stringify(offerPayload, null, 2);
+                        const answer = prompt("1. Copy and send this offer to the host.\n2. Paste their answer back here to connect.", data);
+                        if (answer) {
+                            await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answer)));
+                            newChatModal.classList.add('hidden');
+                        }
+                    }
+                };
+                const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+            }
+            
+            async function startHostingSavedGroup(group) {
+                resetState(true); currentMode = 'group';
+                isHost = true;
+                groupKey = await crypto.subtle.importKey('jwk', group.groupKey, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+                updateStatus('Hosting');
+                chatTitle.textContent = `Group: ${group.name} (Host)`;
+                chatBox.innerHTML = '';
+                displayMessage({ text: `Resumed hosting for group "${group.name}". Members can now rejoin using your public key.` }, "System");
+                connectionPanel.innerHTML = `<div class="p-4 space-y-2"><p class="text-xs text-gray-500">Paste a joiner's offer below, process it, and send the answer back to them.</p><div><label for="host_joinerOffer" class="block text-sm font-medium text-gray-600">Joiner's Offer:</label><textarea id="host_joinerOffer" rows="3" class="w-full mt-1 bg-white rounded-md p-2 text-xs border"></textarea></div><button id="host_processOfferBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Process Offer & Copy Answer</button></div>`;
+                document.getElementById('host_processOfferBtn').onclick = handleHostProcessOffer;
+            }
+
+            async function joinSavedGroup(group) {
+                resetState(true); currentMode = 'group';
+                chatTitle.textContent = `Reconnecting to ${group.name}...`; isHost = false;
+                const hostPublicKeyJwk = JSON.parse(group.hostPublicKey.trim()); const tempSecret = await deriveSharedSecret(hostPublicKeyJwk); if (!tempSecret) return;
+                const pc = createPeerConnectionBase(); hostConnection = { pc, dc: pc.createDataChannel('chat'), tempSecret, hostPublicKey: group.hostPublicKey };
+                setupGroupClientDataChannel(true, group.name);
+                pc.onicecandidate = async e => {
+                    if (!e.candidate) {
+                        const myPublicJwk = JSON.parse(myPublicKeyText.value); const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                        const data = JSON.stringify(offerPayload, null, 2);
+                        const answer = prompt("1. Copy and send this offer to the host.\n2. Paste their answer back here to connect.", data);
+                        if(answer) await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answer)));
+                    }
+                };
+                const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+                showToast(`Re-initiating connection to ${group.name}...`);
+            }
+            
+            async function handleHostProcessOffer() {
+                const offerPayload = JSON.parse(document.getElementById('host_joinerOffer').value); const joinerPublicKey = offerPayload.publicKey;
+                const tempSecret = await deriveSharedSecret(joinerPublicKey); if (!tempSecret) return showToast("Could not derive secret with joiner.", 'error');
+                const pc = createPeerConnectionBase(); const peerId = crypto.randomUUID(); const peerName = `Peer-${Math.floor(1000 + Math.random() * 9000)}`;
+                pc.onicecandidate = e => {
+                    if (!e.candidate) {
+                        const answer = JSON.stringify(pc.localDescription);
+                        navigator.clipboard.writeText(answer).then(() => showToast('Answer copied to clipboard. Send it to the joiner.'));
+                    }
+                };
+                pc.ondatachannel = (e) => {
+                    const dc = e.channel; groupPeers.set(peerId, { pc, dc, name: peerName, tempSecret }); updateGroupMembersList();
+                    dc.onopen = async () => {
+                        showToast(`${peerName} has connected.`); const groupKeyJwk = await crypto.subtle.exportKey('jwk', groupKey);
+                        const encryptedKey = await encrypt({ type: 'groupKey', payload: groupKeyJwk }, tempSecret); dc.send(encryptedKey);
+                    };
+                    dc.onmessage = async (event) => {
+                        const decrypted = await decrypt(event.data, tempSecret); if (!decrypted || decrypted.type !== 'chat') return;
+                        const relayMsg = { senderId: peerId, senderName: peerName, text: decrypted.payload.text }; displayMessage(relayMsg, 'Peer');
+                        const encryptedRelay = await encrypt(relayMsg, groupKey);
+                        groupPeers.forEach((peer, id) => { if (id !== peerId && peer.dc.readyState === 'open') peer.dc.send(JSON.stringify({ type: 'groupChat', payload: encryptedRelay })); });
+                    };
+                    dc.onclose = () => { showToast(`${peerName} disconnected.`); groupPeers.delete(peerId); updateGroupMembersList(); };
+                };
+                await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.offer)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
+            }
+            function setupGroupClientDataChannel(isJoiningSaved = false, groupName = '') {
+                hostConnection.dc.onopen = () => { updateStatus('connected'); chatTitle.textContent = groupName || `Group Chat`; };
+                hostConnection.dc.onmessage = async (e) => {
+                    if (e.data instanceof ArrayBuffer) {
+                        const decryptedKey = await decrypt(e.data, hostConnection.tempSecret);
+                        if(decryptedKey.type === 'groupKey') { 
+                            groupKey = await crypto.subtle.importKey('jwk', decryptedKey.payload, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+                            displayMessage({ text: "Secure group channel established!" }, "System");
+                            if (!isJoiningSaved) {
+                                const name = prompt("Enter a name to save this group:");
+                                if (name) await saveDBItem('groups', {name: name, isHost: false, groupKey: decryptedKey.payload, hostPublicKey: hostConnection.hostPublicKey});
+                            }
+                        }
+                    } else {
+                        const msg = JSON.parse(e.data); if (msg.type === 'groupChat') { const decrypted = await decrypt(msg.payload, groupKey); if (decrypted) displayMessage(decrypted, 'Peer'); }
+                    }
+                };
+                hostConnection.dc.onclose = () => updateStatus('disconnected');
+            }
+            function updateGroupMembersList() { const count = groupPeers.size + 1; chatTitle.textContent = `${chatTitle.textContent.split('(')[0].trim()} - ${count} Member${count > 1 ? 's' : ''}`; }
+
+            // --- Main Message Sender ---
+            messageForm.addEventListener('submit', async (e) => {
+                e.preventDefault(); const text = messageInput.value.trim(); if (!text) return; const msg = { text }; displayMessage(msg, 'Me');
+                if (currentMode === 'p2p' && dataChannel?.readyState === 'open') { const encrypted = await encrypt(msg, sharedSecretKey); dataChannel.send(encrypted); }
+                else if (currentMode === 'group' && groupKey) {
+                    if (isHost) { const encryptedRelay = await encrypt({ senderName: 'Host', text }, groupKey); groupPeers.forEach(peer => { if(peer.dc.readyState === 'open') peer.dc.send(JSON.stringify({ type: 'groupChat', payload: encryptedRelay })); }); }
+                    else if (hostConnection.dc?.readyState === 'open') { const encrypted = await encrypt({ type: 'chat', payload: msg }, hostConnection.tempSecret); hostConnection.dc.send(encrypted); }
+                }
+                messageInput.value = '';
+            });
+
+            // --- Global Event Listeners & Init ---
+            document.getElementById('generateKeysBtn').onclick = generateAndStoreKeys;
+            document.getElementById('copyMyKeyBtn').onclick = () => { myPublicKeyText.select(); document.execCommand('copy'); showToast('Public key copied!'); };
+            
+            // Modal Toggles
+            document.getElementById('settingsBtn').onclick = () => settingsModal.classList.remove('hidden');
+            document.getElementById('closeSettingsBtn').onclick = () => settingsModal.classList.add('hidden');
+            document.getElementById('newChatBtn').onclick = () => newChatModal.classList.remove('hidden');
+            document.getElementById('closeNewChatBtn').onclick = () => newChatModal.classList.add('hidden');
+            document.getElementById('newContactOptionBtn').onclick = () => { newChatModal.classList.add('hidden'); addContactModal.classList.remove('hidden'); document.getElementById('addContactForm').reset(); };
+            document.getElementById('cancelAddContactBtn').onclick = () => addContactModal.classList.add('hidden');
+            
+            document.getElementById('newGroupOptionBtn').onclick = createNewGroup;
+            document.getElementById('group_joinBtn').onclick = joinNewGroup;
+
+            document.getElementById('addContactForm').addEventListener('submit', (e) => { 
+                e.preventDefault();
+                const name = document.getElementById('contactName').value.trim();
+                const publicKey = document.getElementById('contactPublicKey').value.trim();
+                if (name && publicKey) saveDBItem('contacts', { name, publicKey }).then(() => addContactModal.classList.add('hidden'));
+            });
+
+            window.showToast = (message, type = 'info') => { toastEl.textContent = message; toastEl.className = `toast show ${type === 'error' ? 'bg-red-600' : 'bg-gray-700'}`; setTimeout(() => { toastEl.className = 'toast'; }, 3000); };
+            
+            initDB();
+        });
+    </script>
+</body>
+</html>
+
