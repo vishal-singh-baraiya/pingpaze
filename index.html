@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PingChat: Secure Messenger</title>
+    <title>Ching: Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,7 +29,7 @@
 
         .chat-bg {
             background-color: #e5ddd5;
-            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M25 10 C25 10, 25 20, 35 20 C45 20, 45 10, 45 10' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M75 10 C75 10, 75 20, 85 20 C95 20, 95 10, 95 10' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M25 60 C25 60, 25 70, 35 70 C45 70, 45 60, 45 60' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M75 60 C75 60, 75 70, 85 70 C95 70, 95 60, 95 60' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100' 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M25 10 C25 10, 25 20, 35 20 C45 20, 45 10, 45 10' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M75 10 C75 10, 75 20, 85 20 C95 20, 95 10, 95 10' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M25 60 C25 60, 25 70, 35 70 C45 70, 45 60, 45 60' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3Cpath d='M75 60 C75 60, 75 70, 85 70 C95 70, 95 60, 95 60' fill='none' stroke='%23d4c5b2' stroke-width='1'/%3E%3C/svg%3E");
         }
         
         .active-chat {
@@ -144,7 +144,6 @@
             let dataChannel; let sharedSecretKey = null; let isHost = false; let groupKey = null;
             let hostConnection = { pc: null, dc: null }; let groupPeers = new Map();
             let activeChatId = null;
-            let pendingP2PContact = null; // Used to hold contact details while connecting
 
             // --- UI Elements ---
             const myPublicKeyText = document.getElementById('myPublicKey');
@@ -322,7 +321,7 @@
                  groupPeers.forEach(peer => { try { peer.pc.close(); } catch(e){} });
                  peerConnection = null; dataChannel = null; sharedSecretKey = null;
                  isHost = false; groupKey = null; hostConnection = { pc: null, dc: null };
-                 groupPeers.clear(); currentMode = null; pendingP2PContact = null;
+                 groupPeers.clear(); currentMode = null;
                  updateStatus('Disconnected');
                  connectionPanel.innerHTML = '';
                  if (!isSwitchingChat) {
@@ -356,13 +355,33 @@
                 msgDiv.innerHTML = content; msgDiv.className = `break-words ${alignment}`; chatBox.appendChild(msgDiv); chatBox.scrollTop = chatBox.scrollHeight;
             }
 
+            // --- WebRTC Connection ---
+            function createPeerConnectionBase() { 
+                const iceServers = [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    {
+                        urls: "turn:global.turn.twilio.com:3478",
+                        username: "7b79f82662c382e8d3567a423528ce33a0058b8f2d65d4484050a491a134e195",
+                        credential: "iO8g3/fT+efrC3w2I/9j+i8pA3dAk5bE3/4+u2fL7/I="
+                    },
+                    {
+                        urls: "turn:global.turn.twilio.com:3478?transport=tcp",
+                        username: "7b79f82662c382e8d3567a423528ce33a0058b8f2d65d4484050a491a134e195",
+                        credential: "iO8g3/fT+efrC3w2I/9j+i8pA3dAk5bE3/4+u2fL7/I="
+                    }
+                ];
+                return new RTCPeerConnection({ iceServers }); 
+            }
+
             // --- Unified Invite Code Logic ---
             function b64encode(str) { return btoa(unescape(encodeURIComponent(str))); }
             function b64decode(str) { return decodeURIComponent(escape(atob(str))); }
             
-            async function generateInvite(type, payload) {
+            async function generateInvite(type, payload, senderName = "Anonymous") {
                 const myPublicJwk = JSON.parse(myPublicKeyText.value);
-                const invite = { type, payload, senderKey: myPublicJwk };
+                const invite = { type, payload, senderKey: myPublicJwk, senderName: senderName };
                 return b64encode(JSON.stringify(invite));
             }
 
@@ -390,6 +409,9 @@
 
             // --- 1-on-1 Chat Flow ---
             async function startNew1on1Chat() {
+                const myName = prompt("What is your name for this chat?");
+                if (!myName) return; 
+                
                 if(!myKeyPair) return showToast('Keys not loaded.', 'error');
                 resetState(true);
                 currentMode = 'p2p';
@@ -405,7 +427,7 @@
                 await peerConnection.setLocalDescription(offer);
                 await new Promise(resolve => { if (peerConnection.iceGatheringState === 'complete') resolve(); else peerConnection.onicegatheringstatechange = () => { if(peerConnection.iceGatheringState === 'complete') resolve(); } });
                 
-                const inviteCode = await generateInvite('p2p-offer', peerConnection.localDescription);
+                const inviteCode = await generateInvite('p2p-offer', peerConnection.localDescription, myName);
 
                 newChatModal.classList.add('hidden');
                 connectionPanel.innerHTML = `<div class="p-4 space-y-3 bg-slate-100 rounded-lg">
@@ -417,8 +439,9 @@
             }
             
             async function handleP2POffer(offerInvite) {
-                const contactName = prompt("Enter a name for this new contact:");
-                if (!contactName) return;
+                const contactName = offerInvite.senderName || 'New Contact';
+                const myName = prompt(`You have a chat invite from ${contactName}. What is your name?`);
+                if (!myName) return;
 
                 resetState(true);
                 currentMode = 'p2p';
@@ -426,7 +449,9 @@
                 chatBox.innerHTML = '';
                 chatTitle.textContent = `Connecting to ${contactName}...`;
                 
-                pendingP2PContact = { name: contactName, publicKey: JSON.stringify(offerInvite.senderKey) };
+                const newContact = { name: contactName, publicKey: JSON.stringify(offerInvite.senderKey) };
+                activeChatId = await saveDBItem('contacts', newContact);
+                
                 sharedSecretKey = await deriveSharedSecret(offerInvite.senderKey);
                 if(!sharedSecretKey) return;
                 
@@ -438,11 +463,11 @@
                 await peerConnection.setLocalDescription(answer);
                 await new Promise(resolve => { if (peerConnection.iceGatheringState === 'complete') resolve(); else peerConnection.onicegatheringstatechange = () => { if(peerConnection.iceGatheringState === 'complete') resolve(); } });
                 
-                const answerCode = await generateInvite('p2p-answer', peerConnection.localDescription);
+                const answerCode = await generateInvite('p2p-answer', peerConnection.localDescription, myName);
 
                 connectionPanel.innerHTML = `<div class="p-4 space-y-3 bg-slate-100 rounded-lg">
                     <h4 class="font-medium text-sm text-gray-700">Response Code Generated</h4>
-                    <p class="text-xs text-gray-500 mb-2">Send this code back to the original sender to complete the connection.</p>
+                    <p class="text-xs text-gray-500 mb-2">Send this code back to ${contactName} to complete the connection.</p>
                     <textarea rows="4" class="w-full text-xs p-2 border rounded-md" readonly>${answerCode}</textarea>
                     <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); showToast('Response Code Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Response Code</button>
                 </div>`;
@@ -454,8 +479,7 @@
                 sharedSecretKey = await deriveSharedSecret(answerInvite.senderKey);
                 if (!sharedSecretKey) return;
 
-                const contactName = prompt("Enter a name to save this contact:");
-                if (!contactName) return;
+                const contactName = answerInvite.senderName || 'New Contact';
 
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(answerInvite.payload));
                 const newContact = { name: contactName, publicKey: JSON.stringify(answerInvite.senderKey) };
@@ -466,12 +490,6 @@
             function setupP2PDataChannel() {
                 dataChannel.onopen = () => {
                     updateStatus('connected');
-                    // If we just finished connecting as the responder, save the contact now.
-                    if (pendingP2PContact && !isHost) {
-                        saveDBItem('contacts', pendingP2PContact).then(id => activeChatId = id);
-                        chatTitle.textContent = `Chat with ${pendingP2PContact.name}`;
-                        pendingP2PContact = null;
-                    }
                 };
                 dataChannel.onclose = () => updateStatus('disconnected');
                 dataChannel.onmessage = async (e) => { const msg = await decrypt(e.data, sharedSecretKey); if (msg) displayMessage(msg, 'Peer'); };
@@ -562,7 +580,7 @@
                 await pc.setRemoteDescription(new RTCSessionDescription(offerInvite.payload));
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
-                await new Promise(resolve => { if (pc.iceGatheringState === 'complete') resolve(); else pc.onicegatheringstatechange = () => { if(pc.iceGatheringState === 'complete') resolve(); } });
+                await new Promise(resolve => { if (peerConnection.iceGatheringState === 'complete') resolve(); else pc.onicegatheringstatechange = () => { if(pc.iceGatheringState === 'complete') resolve(); } });
                 
                 const answerCode = await generateInvite('group-answer', pc.localDescription);
                 // Show the answer code in a modal or panel for the host to copy
