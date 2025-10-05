@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pingoo: Secure Messenger</title>
+    <title>Ping: Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -401,8 +401,8 @@
                     const offer = await peerConnection.createOffer(); 
                     await peerConnection.setLocalDescription(offer);
 
-                    // Wait for ICE gathering to complete
-                    await new Promise(resolve => {
+                    // Wait for ICE gathering to complete with a timeout
+                    const iceGatheringPromise = new Promise(resolve => {
                         if (peerConnection.iceGatheringState === 'complete') {
                             resolve();
                         } else {
@@ -415,6 +415,8 @@
                             peerConnection.addEventListener('icegatheringstatechange', checkState);
                         }
                     });
+
+                    await Promise.race([iceGatheringPromise, new Promise(resolve => setTimeout(resolve, 5000))]); // 5 second timeout
 
                     document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription);
                     showToast('Offer created. Copy and send it to your peer.');
@@ -436,8 +438,8 @@
                         const answer = await peerConnection.createAnswer(); 
                         await peerConnection.setLocalDescription(answer);
 
-                        // Wait for ICE gathering to complete
-                        await new Promise(resolve => {
+                        // Wait for ICE gathering to complete with a timeout
+                        const iceGatheringPromise = new Promise(resolve => {
                             if (peerConnection.iceGatheringState === 'complete') {
                                 resolve();
                             } else {
@@ -450,6 +452,8 @@
                                 peerConnection.addEventListener('icegatheringstatechange', checkState);
                             }
                         });
+                        
+                        await Promise.race([iceGatheringPromise, new Promise(resolve => setTimeout(resolve, 5000))]); // 5 second timeout
                         
                         document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription);
                         showToast('Answer created. Copy and send it back.');
@@ -471,10 +475,11 @@
                 const iceServers = [
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
                     // Using a free, public TURN server for demonstration.
                     // For a production app, you should deploy your own TURN server (e.g., Coturn).
                     {
-                        urls: "turn:global.turn.twilio.com:3478?transport=udp",
+                        urls: "turn:global.turn.twilio.com:3478",
                         username: "7b79f82662c382e8d3567a423528ce33a0058b8f2d65d4484050a491a134e195",
                         credential: "iO8g3/fT+efrC3w2I/9j+i8pA3dAk5bE3/4+u2fL7/I="
                     },
@@ -681,5 +686,4 @@
     </script>
 </body>
 </html>
-
 
