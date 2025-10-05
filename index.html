@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Messenger</title>
+    <title>Ping Paze: Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -354,33 +354,39 @@
 
             // --- Chat Initiation ---
             async function createP2PInvite() {
+                if (!myKeyPair) return showToast('Keys not loaded. Please wait or reload.', 'error');
                 const name = prompt("Enter a name for your new contact:");
                 if (!name) return;
 
-                if (!myKeyPair) return showToast('Keys not loaded.', 'error');
-                const pc = createPeerConnectionBase();
-                
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
+                try {
+                    const pc = createPeerConnectionBase();
+                    
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
 
-                await new Promise(resolve => {
-                    if (pc.iceGatheringState === 'complete') resolve();
-                    else pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });
-                });
-                
-                const fullOffer = pc.localDescription;
+                    await new Promise(resolve => {
+                        if (pc.iceGatheringState === 'complete') resolve();
+                        else pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });
+                    });
+                    
+                    const fullOffer = pc.localDescription;
 
-                const myPublicJwk = JSON.parse(myPublicKeyText.value);
-                const invitePayload = { offer: fullOffer, publicKey: myPublicJwk };
-                const inviteCode = btoa(JSON.stringify(invitePayload));
+                    const myPublicJwk = JSON.parse(myPublicKeyText.value);
+                    const invitePayload = { offer: fullOffer, publicKey: myPublicJwk };
 
-                const contactId = await saveDBItem('contacts', { name, status: 'pending', offer: fullOffer });
-                
-                newChatModal.classList.add('hidden');
-                await renderChatList();
-                
-                const newContactEl = document.querySelector(`#chatList div[data-id='${contactId}']`);
-                if (newContactEl) newContactEl.click();
+                    const contactId = await saveDBItem('contacts', { name, status: 'pending', offer: JSON.stringify(fullOffer) });
+                    
+                    newChatModal.classList.add('hidden');
+                    await renderChatList();
+                    
+                    const newContactEl = document.querySelector(`#chatList div[data-id='${contactId}']`);
+                    if (newContactEl) {
+                        newContactEl.click();
+                    }
+                } catch (err) {
+                    console.error("Error creating P2P invite:", err);
+                    showToast("Failed to create invite. See console for details.", "error");
+                }
             }
 
             async function acceptP2PInvite() {
@@ -440,7 +446,7 @@
 
                 if (contact.status === 'pending') {
                     const myPublicJwk = JSON.parse(myPublicKeyText.value);
-                    const invitePayload = { offer: contact.offer, publicKey: myPublicJwk };
+                    const invitePayload = { offer: JSON.parse(contact.offer), publicKey: myPublicJwk };
                     const inviteCode = btoa(JSON.stringify(invitePayload));
 
                     connectionPanel.innerHTML = `
@@ -476,7 +482,7 @@
                         sharedSecretKey = await deriveSharedSecret(peerPublicKey);
                         if (!sharedSecretKey) return;
                         
-                        await peerConnection.setLocalDescription(new RTCSessionDescription(contact.offer));
+                        await peerConnection.setLocalDescription(new RTCSessionDescription(JSON.parse(contact.offer)));
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
 
                         contact.publicKey = JSON.stringify(peerPublicKey);
