@@ -132,6 +132,22 @@
             </div>
         </div>
     </div>
+
+    <div id="nameModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 id="nameModalTitle" class="text-lg font-bold mb-4 text-gray-800">Enter Contact Name</h2>
+            <form id="nameForm">
+                <div class="mb-4">
+                    <label for="contactNameInput" class="block text-sm font-medium text-gray-700">Name</label>
+                    <input type="text" id="contactNameInput" class="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-teal-500 focus:border-teal-500" required>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancelNameBtn" class="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors">Cancel</button>
+                    <button type="submit" class="bg-teal-500 text-white py-2 px-4 rounded-md hover:bg-teal-600 transition-colors">Continue</button>
+                </div>
+            </form>
+        </div>
+    </div>
     
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
@@ -156,10 +172,11 @@
 
             const settingsModal = document.getElementById('settingsModal');
             const newChatModal = document.getElementById('newChatModal');
+            const nameModal = document.getElementById('nameModal');
 
             // --- Core Functions (Crypto, DB) ---
             function initDB() {
-                const request = indexedDB.open('secureChatDB_v9', 1); // Version bump to ensure schema update
+                const request = indexedDB.open('secureChatDB_v9', 1);
                 request.onerror = (e) => console.error("DB error:", e.target.errorCode);
                 request.onsuccess = (e) => {
                     db = e.target.result;
@@ -352,16 +369,55 @@
                 }
                 msgDiv.innerHTML = content; msgDiv.className = `break-words ${alignment}`; chatBox.appendChild(msgDiv); chatBox.scrollTop = chatBox.scrollHeight;
             }
+            
+            // --- Name Modal Helper ---
+            function getNameFromModal(title) {
+                return new Promise(resolve => {
+                    const modal = document.getElementById('nameModal');
+                    const titleEl = document.getElementById('nameModalTitle');
+                    const form = document.getElementById('nameForm');
+                    const input = document.getElementById('contactNameInput');
+                    const cancelBtn = document.getElementById('cancelNameBtn');
+
+                    titleEl.textContent = title;
+                    input.value = '';
+                    modal.classList.remove('hidden');
+                    input.focus();
+
+                    const submitHandler = (e) => {
+                        e.preventDefault();
+                        const name = input.value.trim();
+                        if (name) {
+                            cleanup();
+                            resolve(name);
+                        }
+                    };
+
+                    const cancelHandler = () => {
+                        cleanup();
+                        resolve(null);
+                    };
+                    
+                    const cleanup = () => {
+                        modal.classList.add('hidden');
+                        form.removeEventListener('submit', submitHandler);
+                        cancelBtn.removeEventListener('click', cancelHandler);
+                    };
+
+                    form.addEventListener('submit', submitHandler);
+                    cancelBtn.addEventListener('click', cancelHandler);
+                });
+            }
 
             // --- Chat Initiation ---
             async function createP2PInvite() {
                 if (!myKeyPair) return showToast('Keys not loaded. Please wait or reload.', 'error');
-                const name = prompt("Enter a name for your new contact:");
+                
+                const name = await getNameFromModal('Enter Contact Name');
                 if (!name) return;
 
                 try {
                     const pc = createPeerConnectionBase();
-                    
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
 
@@ -377,9 +433,8 @@
                     await renderChatList();
                     
                     const newContactEl = document.querySelector(`#chatList div[data-id='${contactId}']`);
-                    if (newContactEl) {
-                        newContactEl.click();
-                    }
+                    if (newContactEl) newContactEl.click();
+
                 } catch (err) {
                     console.error("Error creating P2P invite:", err);
                     showToast("Failed to create invite. See console for details.", "error");
@@ -390,9 +445,6 @@
                 const inviteCode = document.getElementById('acceptInviteCode').value.trim();
                 if (!inviteCode) return showToast('Invite code is empty.', 'error');
                 
-                const name = prompt("Enter a name for this new contact:");
-                if (!name) return;
-
                 let invitePayload;
                 try {
                     invitePayload = JSON.parse(atob(inviteCode));
@@ -400,6 +452,9 @@
                     console.error("Error parsing invite code", e);
                     return showToast('Invalid invite code format.', 'error');
                 }
+                
+                const name = await getNameFromModal('Enter Name for New Contact');
+                if (!name) return;
 
                 const { offer, publicKey: peerPublicKey } = invitePayload;
 
@@ -448,12 +503,6 @@
                     const inviteCode = btoa(JSON.stringify(invitePayload));
 
                     connectionPanel.innerHTML = `
-                        <div class="p-4 space-y-4 bg-slate-100 rounded-lg">
-                            <h4 class="font-medium text-sm text-gray-700">Step 1: Send Your Invite Code</h4>
-                            <p class="text-xs text-gray-500 mb-2">Copy this code and send it to ${contact.name}.</p>
-                            <textarea id="p2p_inviteCodeArea" rows="4" class="w-full text-xs p-2 border rounded-md" readonly>${inviteCode}</textarea>
-                            <button onclick="navigator.clipboard.writeText(document.getElementById('p2p_inviteCodeArea').value); showToast('Invite Code Copied!');" class="w-full mt-2 bg-gray-200 hover:bg-gray-300 font-bold py-2 px-3 rounded-md text-sm">Copy Invite Code</button>
-                        </div>
                         <div class="p-4 space-y-4 bg-slate-100 rounded-lg mt-4">
                             <h4 class="font-medium text-sm text-gray-700">Step 2: Paste Their Response</h4>
                             <p class="text-xs text-gray-500 mb-2">Once they respond, paste their code here.</p>
@@ -461,6 +510,9 @@
                             <button id="p2p_finalizeBtn" class="w-full mt-2 bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-md text-sm">Finalize Connection</button>
                         </div>
                     `;
+                    
+                    displayMessage({ text: `<b>Step 1: Send Your Invite Code</b><br>Copy this code and send it to ${contact.name}.<br><br><code class="bg-gray-200 text-gray-800 p-2 rounded select-all break-all">${inviteCode}</code>` }, "System");
+
 
                     document.getElementById('p2p_finalizeBtn').onclick = async () => {
                         const responseCode = document.getElementById('p2p_responsePasteArea').value.trim();
@@ -526,7 +578,7 @@
 
             // --- Group Mode Logic ---
             async function createNewGroup() {
-                const groupName = prompt("Enter a name for your new group:");
+                const groupName = await getNameFromModal("Enter Group Name");
                 if (!groupName) return;
                 isHost = true; 
                 groupKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); 
@@ -534,6 +586,7 @@
                 await saveDBItem('groups', { name: groupName, isHost: true, groupKey: groupKeyJwk });
                 showToast('Group created! Select it from the list to start hosting.');
                 newChatModal.classList.add('hidden');
+                await renderChatList();
             }
             
             async function startHostingSavedGroup(group) {
@@ -641,8 +694,8 @@
                             groupKey = await crypto.subtle.importKey('jwk', decryptedKey.payload, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
                             displayMessage({ text: "Secure group channel established!" }, "System");
                             if (!isJoiningSaved) {
-                                const name = prompt("Enter a name to save this group:");
-                                if (name) await saveDBItem('groups', {name: name, isHost: false, groupKey: decryptedKey.payload, hostPublicKey: JSON.stringify(hostConnection.hostPublicKey)});
+                                const groupName = await getNameFromModal("Enter a name to save this group:");
+                                if (groupName) await saveDBItem('groups', {name: groupName, isHost: false, groupKey: decryptedKey.payload, hostPublicKey: JSON.stringify(hostConnection.hostPublicKey)});
                             }
                         }
                     } else {
@@ -674,8 +727,14 @@
             document.getElementById('newChatBtn').onclick = () => newChatModal.classList.remove('hidden');
             document.getElementById('closeNewChatBtn').onclick = () => newChatModal.classList.add('hidden');
             
-            document.getElementById('createP2PInviteBtn').onclick = createP2PInvite;
-            document.getElementById('acceptInviteBtn').onclick = acceptP2PInvite;
+            document.getElementById('createP2PInviteBtn').onclick = () => {
+                newChatModal.classList.add('hidden');
+                createP2PInvite();
+            };
+            document.getElementById('acceptInviteBtn').onclick = () => {
+                newChatModal.classList.add('hidden');
+                acceptP2PInvite();
+            };
             document.getElementById('newGroupOptionBtn').onclick = createNewGroup;
 
             window.showToast = (message, type = 'info') => { toastEl.textContent = message; toastEl.className = `toast show ${type === 'error' ? 'bg-red-600' : 'bg-gray-700'}`; setTimeout(() => { toastEl.className = 'toast'; }, 3000); };
