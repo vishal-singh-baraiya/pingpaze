@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Messenger</title>
+    <title>PingPaze: Secure Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -395,22 +395,69 @@
                     if (!myKeyPair) return showToast('Keys not loaded.', 'error');
                     peerConnection = createPeerConnectionBase(); sharedSecretKey = await deriveSharedSecret(JSON.parse(contact.publicKey)); if (!sharedSecretKey) return;
                     dataChannel = peerConnection.createDataChannel('chat'); setupP2PDataChannel();
-                    peerConnection.onicecandidate = e => !e.candidate && (document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription));
+                    
                     peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
-                    const offer = await peerConnection.createOffer(); await peerConnection.setLocalDescription(offer);
+                    
+                    const offer = await peerConnection.createOffer(); 
+                    await peerConnection.setLocalDescription(offer);
+
+                    // Wait for ICE gathering to complete
+                    await new Promise(resolve => {
+                        if (peerConnection.iceGatheringState === 'complete') {
+                            resolve();
+                        } else {
+                            const checkState = () => {
+                                if (peerConnection.iceGatheringState === 'complete') {
+                                    peerConnection.removeEventListener('icegatheringstatechange', checkState);
+                                    resolve();
+                                }
+                            }
+                            peerConnection.addEventListener('icegatheringstatechange', checkState);
+                        }
+                    });
+
+                    document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription);
+                    showToast('Offer created. Copy and send it to your peer.');
                 };
 
                 document.getElementById('p2p_processSignalBtn').onclick = async () => {
-                    const signal = JSON.parse(document.getElementById('p2p_connectionData').value.trim());
+                    const signalData = document.getElementById('p2p_connectionData').value.trim();
+                    if (!signalData) return showToast('Connection Data is empty.', 'error');
+                    const signal = JSON.parse(signalData);
+
                     if (signal.type === 'offer') {
                         if (!myKeyPair) return showToast('Keys not loaded.', 'error');
                         peerConnection = createPeerConnectionBase(); sharedSecretKey = await deriveSharedSecret(JSON.parse(contact.publicKey)); if (!sharedSecretKey) return;
                         peerConnection.ondatachannel = e => { dataChannel = e.channel; setupP2PDataChannel(); };
-                        peerConnection.onicecandidate = e => !e.candidate && (document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription));
+                        
                         peerConnection.onconnectionstatechange = () => updateStatus(peerConnection.connectionState);
+                        
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
-                        const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer);
-                    } else if (signal.type === 'answer') { await peerConnection.setRemoteDescription(new RTCSessionDescription(signal)); }
+                        const answer = await peerConnection.createAnswer(); 
+                        await peerConnection.setLocalDescription(answer);
+
+                        // Wait for ICE gathering to complete
+                        await new Promise(resolve => {
+                            if (peerConnection.iceGatheringState === 'complete') {
+                                resolve();
+                            } else {
+                                const checkState = () => {
+                                    if (peerConnection.iceGatheringState === 'complete') {
+                                        peerConnection.removeEventListener('icegatheringstatechange', checkState);
+                                        resolve();
+                                    }
+                                }
+                                peerConnection.addEventListener('icegatheringstatechange', checkState);
+                            }
+                        });
+                        
+                        document.getElementById('p2p_connectionData').value = JSON.stringify(peerConnection.localDescription);
+                        showToast('Answer created. Copy and send it back.');
+
+                    } else if (signal.type === 'answer') { 
+                        if (!peerConnection) return showToast('Please create an offer first before processing an answer.', 'error');
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(signal)); 
+                    }
                 };
             }
             
@@ -441,26 +488,49 @@
                 
                 resetState(true); currentMode = 'group';
                 isHost = false; 
-                const hostPublicKeyJwk = JSON.parse(hostPublicKey.trim()); 
-                const tempSecret = await deriveSharedSecret(hostPublicKeyJwk); if (!tempSecret) return;
                 
-                const pc = createPeerConnectionBase(); 
-                hostConnection = { pc, dc: pc.createDataChannel('chat'), tempSecret, hostPublicKey }; 
-                setupGroupClientDataChannel();
+                try {
+                    const hostPublicKeyJwk = JSON.parse(hostPublicKey.trim()); 
+                    const tempSecret = await deriveSharedSecret(hostPublicKeyJwk); if (!tempSecret) return;
                 
-                pc.onicecandidate = async e => {
-                    if (!e.candidate) {
-                        const myPublicJwk = JSON.parse(myPublicKeyText.value); 
-                        const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
-                        const data = JSON.stringify(offerPayload, null, 2);
-                        const answer = prompt("1. Copy and send this offer to the host.\n2. Paste their answer back here to connect.", data);
-                        if (answer) {
-                            await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answer)));
+                    const pc = createPeerConnectionBase(); 
+                    hostConnection = { pc, dc: pc.createDataChannel('chat'), tempSecret, hostPublicKey }; 
+                    setupGroupClientDataChannel();
+                    
+                    pc.onicecandidate = async e => {
+                        if (!e.candidate) {
+                            const myPublicJwk = JSON.parse(myPublicKeyText.value); 
+                            const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
+                            const data = JSON.stringify(offerPayload, null, 2);
+                            
                             newChatModal.classList.add('hidden');
+                            connectionPanel.innerHTML = `<div class="space-y-3 p-4">
+                                <h2 class="font-semibold text-gray-800 text-sm">Join Group</h2>
+                                <p class="text-xs text-gray-500">Copy this offer and send it to the group host.</p>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600">Your Join Offer:</label>
+                                    <textarea id="group_offer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300" readonly>${data}</textarea>
+                                </div>
+                                <p class="text-xs text-gray-500">Paste the host's answer below to connect.</p>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600">Host's Answer:</label>
+                                    <textarea id="group_answer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300"></textarea>
+                                </div>
+                                <button id="group_connect_btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Connect</button>
+                            </div>`;
+
+                            document.getElementById('group_connect_btn').onclick = async () => {
+                                const answerData = document.getElementById('group_answer_data').value.trim();
+                                if (answerData) {
+                                    await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerData)));
+                                } else {
+                                    showToast('Host answer is required.', 'error');
+                                }
+                            };
                         }
-                    }
-                };
-                const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+                    };
+                    const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+                } catch(e) { showToast('Invalid host public key.', 'error'); }
             }
             
             async function startHostingSavedGroup(group) {
@@ -485,8 +555,21 @@
                     if (!e.candidate) {
                         const myPublicJwk = JSON.parse(myPublicKeyText.value); const offerPayload = { offer: pc.localDescription, publicKey: myPublicJwk };
                         const data = JSON.stringify(offerPayload, null, 2);
-                        const answer = prompt("1. Copy and send this offer to the host.\n2. Paste their answer back here to connect.", data);
-                        if(answer) await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answer)));
+                        
+                        connectionPanel.innerHTML = `<div class="space-y-3 p-4">
+                            <h2 class="font-semibold text-gray-800 text-sm">Rejoin ${group.name}</h2>
+                            <p class="text-xs text-gray-500">Copy this offer and send it to the group host.</p>
+                            <div><label class="block text-xs font-medium text-gray-600">Your Join Offer:</label><textarea id="group_offer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300" readonly>${data}</textarea></div>
+                            <p class="text-xs text-gray-500">Paste the host's answer below to connect.</p>
+                            <div><label class="block text-xs font-medium text-gray-600">Host's Answer:</label><textarea id="group_answer_data" rows="3" class="w-full mt-1 bg-white text-gray-700 rounded-md p-2 text-xs border border-gray-300"></textarea></div>
+                            <button id="group_connect_btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm">Connect</button>
+                        </div>`;
+
+                        document.getElementById('group_connect_btn').onclick = async () => {
+                            const answerData = document.getElementById('group_answer_data').value.trim();
+                            if (answerData) await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerData)));
+                            else showToast('Host answer is required.', 'error');
+                        };
                     }
                 };
                 const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
