@@ -52,10 +52,10 @@
             </div>
             
             <div id="chatList" class="overflow-y-auto flex-grow p-2">
-                <p class="text-sm text-gray-500 text-center p-4">No chats yet. Start a new one!</p>
+                <p class="text-sm text-gray-500 text-center p-4">Loading contacts...</p>
             </div>
 
-            <button id="newChatBtn" title="New Chat" class="absolute bottom-6 right-6 bg-teal-500 hover:bg-teal-600 text-white rounded-full p-4 shadow-lg transition-transform hover:scale-110">
+            <button id="newChatBtn" title="New Chat" class="absolute bottom-6 right-6 bg-teal-500 hover:bg-teal-600 text-white rounded-full p-4 shadow-lg transition-transform hover:scale-110 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
             </button>
         </div>
@@ -169,6 +169,7 @@
             const toastEl = document.getElementById('toast');
             const chatTitle = document.getElementById('chat-title');
             const connectionPanel = document.getElementById('connectionPanel');
+            const newChatBtn = document.getElementById('newChatBtn');
 
             const settingsModal = document.getElementById('settingsModal');
             const newChatModal = document.getElementById('newChatModal');
@@ -177,11 +178,16 @@
             // --- Core Functions (Crypto, DB) ---
             function initDB() {
                 const request = indexedDB.open('secureChatDB_v9', 1);
-                request.onerror = (e) => console.error("DB error:", e.target.errorCode);
+                request.onerror = (e) => {
+                    console.error("DB error:", e.target.errorCode);
+                    document.getElementById('chatList').innerHTML = `<p class="text-red-500 p-4">Error: Could not open local database. The app cannot function.</p>`;
+                }
                 request.onsuccess = (e) => {
                     db = e.target.result;
-                    loadMyKeys();
-                    renderChatList();
+                    loadMyKeys().then(() => {
+                        newChatBtn.disabled = false; // Enable UI once DB and keys are ready
+                        renderChatList();
+                    });
                 };
                 request.onupgradeneeded = (e) => {
                     const db = e.target.result;
@@ -199,24 +205,38 @@
                         crypto.subtle.exportKey('jwk', myKeyPair.privateKey)
                     ]);
                     myPublicKeyText.value = JSON.stringify(publicKeyJwk, null, 2);
-                    db.transaction('keyStore', 'readwrite').objectStore('keyStore').put({ name: 'myKeyPair', value: { publicKey: publicKeyJwk, privateKey: privateKeyJwk } });
+                    await saveDBItem('keyStore', { name: 'myKeyPair', value: { publicKey: publicKeyJwk, privateKey: privateKeyJwk } }, 'myKeyPair');
                     showToast('New keys generated and saved!');
                 } catch (error) { console.error('Key generation failed:', error); showToast('Error: Key generation failed.', 'error'); }
             }
             
             async function loadMyKeys() {
-                if (!db) return;
-                const request = db.transaction('keyStore').objectStore('keyStore').get('myKeyPair');
-                request.onsuccess = async () => {
-                    if (request.result) {
-                        const { publicKey, privateKey } = request.result.value;
-                        myKeyPair = {
-                            publicKey: await crypto.subtle.importKey('jwk', publicKey, { name: 'ECDH', namedCurve: 'P-256' }, true, []),
-                            privateKey: await crypto.subtle.importKey('jwk', privateKey, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey'])
-                        };
-                        myPublicKeyText.value = JSON.stringify(publicKey, null, 2);
-                    } else { await generateAndStoreKeys(); }
-                };
+                return new Promise((resolve, reject) => {
+                    if (!db) return reject("DB not ready");
+                    const request = db.transaction('keyStore').objectStore('keyStore').get('myKeyPair');
+                    request.onerror = reject;
+                    request.onsuccess = async () => {
+                        if (request.result) {
+                            try {
+                                const { publicKey, privateKey } = request.result.value;
+                                myKeyPair = {
+                                    publicKey: await crypto.subtle.importKey('jwk', publicKey, { name: 'ECDH', namedCurve: 'P-256' }, true, []),
+                                    privateKey: await crypto.subtle.importKey('jwk', privateKey, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey'])
+                                };
+                                myPublicKeyText.value = JSON.stringify(publicKey, null, 2);
+                                resolve();
+                            } catch (e) {
+                                console.error("Error importing keys:", e);
+                                // Keys are corrupted, generate new ones
+                                await generateAndStoreKeys();
+                                resolve();
+                            }
+                        } else { 
+                            await generateAndStoreKeys();
+                            resolve();
+                        }
+                    };
+                });
             }
 
             async function deriveSharedSecret(peerPublicKeyJwk) {
@@ -411,7 +431,7 @@
 
             // --- Chat Initiation ---
             async function createP2PInvite() {
-                if (!myKeyPair) return showToast('Keys not loaded. Please wait or reload.', 'error');
+                if (!myKeyPair || !db) return showToast('App is not ready. Please wait a moment.', 'error');
                 
                 const name = await getNameFromModal('Enter Contact Name');
                 if (!name) return;
@@ -442,6 +462,7 @@
             }
 
             async function acceptP2PInvite() {
+                if (!myKeyPair || !db) return showToast('App is not ready. Please wait a moment.', 'error');
                 const inviteCode = document.getElementById('acceptInviteCode').value.trim();
                 if (!inviteCode) return showToast('Invite code is empty.', 'error');
                 
